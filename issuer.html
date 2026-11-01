@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob: mediastream:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob: mediastream:; connect-src https://api.github.com; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex,nofollow">
 <meta name="theme-color" content="#000000">
@@ -44,7 +44,7 @@ label.r input{width:auto}
 [hidden]{display:none!important}
 </style></head>
 <body><div class="wrap">
-<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판 v1.1</div></div><button id="lockbtn" hidden>잠그기</button></div>
+<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판 v1.2</div></div><button id="lockbtn" hidden>잠그기</button></div>
 
 <!-- 1) 열쇠가 아직 없음 -->
 <div class="box" id="nokey" hidden>
@@ -87,7 +87,9 @@ label.r input{width:auto}
   </div>
 
   <h2>이 핸드폰의 발급 기록</h2>
-  <div class="muted">기록은 이 핸드폰에만 남습니다 (PC 발급기 기록과 따로). 가끔 [기록 내보내기]로 보관하고, 서로 [기록 가져오기]로 합치세요.</div>
+  <div class="muted">PC 발급기에서 '기록 자동 맞추기'를 켜고 QR을 찍었으면 PC와 이 핸드폰의 기록이 저절로 합쳐집니다. 안 켰으면 [기록 내보내기]·[기록 가져오기]로 합치세요.</div>
+  <div class="msg" id="sy_msg"></div>
+  <div class="row"><button id="sy_now">지금 맞추기</button></div>
   <div class="row"><button id="csv">기록 내보내기 (CSV)</button><button id="imp">기록 가져오기 (CSV)</button><input type="file" id="impfile" accept=".csv,text/csv,text/plain,text/comma-separated-values" hidden></div>
   <div class="msg" id="impmsg"></div>
   <div class="muted">PC 발급기 [기록 내려받기]로 받은 CSV를 [기록 가져오기]로 넣으면 한 목록으로 합쳐집니다 (같은 시리얼은 한 번만, 진짜 시리얼만).</div>
@@ -97,7 +99,7 @@ label.r input{width:auto}
   <div class="muted">핸드폰을 바꾸거나 남에게 줄 때 누르세요. 지워도 PC 발급기와 이미 준 시리얼은 그대로입니다.</div>
   <div class="row"><button id="forget">열쇠 지우기</button></div>
 </div>
-<div class="muted" style="margin-top:24px">이 화면은 인터넷으로 아무것도 보내지 않습니다 (보내기는 핸드폰의 공유 창으로만). 3분 넘게 다른 앱을 쓰면 저절로 잠깁니다.</div>
+<div class="muted" style="margin-top:24px">이 화면이 인터넷으로 보내는 것은 잠근 발급 기록뿐이고, 대표님의 비공개 저장소(fm-log)로만 갑니다 (자동 맞추기를 켰을 때). 시리얼 보내기는 핸드폰의 공유 창으로만 합니다. 3분 넘게 다른 앱을 쓰면 저절로 잠깁니다.</div>
 </div>
 <script src="issuer-nacl.js"></script>
 <script>
@@ -122,7 +124,8 @@ function vaultOk(o) { return o && o.v === 1 && o.pub === PUB && typeof o.salt ==
 function takeKey(text) {
   let t = String(text || '').trim(); const m = t.match(/[#&?]k=([A-Za-z0-9_-]+)/); if (m) t = m[1];
   let o = null; try { o = JSON.parse(new TextDecoder().decode(fromB64url(t.replace(/\s+/g, '')))); } catch (e) { try { o = JSON.parse(t); } catch (e2) {} }
-  if (!vaultOk(o)) return false; if (!ls.set('fm_m_vault', JSON.stringify(o))) return false; return true;
+  if (!vaultOk(o)) return false; if (!ls.set('fm_m_vault', JSON.stringify(o))) return false;
+  const tt = String(text || '').match(/[#&?]t=([A-Za-z0-9_-]+\.[A-Za-z0-9_-]+)/); if (tt) ls.set('fm_sync_tok', tt[1]); return true;
 }
 const vault = () => { try { const o = JSON.parse(ls.get('fm_m_vault') || 'null'); return vaultOk(o) ? o : null; } catch (e) { return null; } };
 function paint() { const v = vault(); $('#nokey').hidden = !!v; $('#lock').hidden = !v || !!KEY; $('#main').hidden = !KEY; $('#lockbtn').hidden = !KEY; if (v && !KEY) setTimeout(() => $('#pw').focus(), 50); }
@@ -144,10 +147,10 @@ $('#scan').onclick = async () => {
 async function pbk(pw, salt, iter) { const base = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']); }
 $('#unlock').onclick = async () => { const B = vault(); if (!B) return paint(); say('#lockmsg', '여는 중…'); $('#unlock').disabled = true;
   try { const key = await pbk($('#pw').value, fromB64(B.salt), B.iter); const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(B.iv) }, key, fromB64(B.ct)); const K = JSON.parse(new TextDecoder().decode(pt));
-    const kp = nacl.sign.keyPair.fromSeed(fromB64(K.seed)); if (toB64(kp.publicKey) !== PUB) throw new Error('pub'); KEY = K; $('#pw').value = ''; say('#lockmsg', ''); paint(); paintLog(); }
+    const kp = nacl.sign.keyPair.fromSeed(fromB64(K.seed)); if (toB64(kp.publicKey) !== PUB) throw new Error('pub'); KEY = K; SYK = null; $('#pw').value = ''; say('#lockmsg', ''); paint(); paintLog(); if (ls.get('fm_sync_tok')) syRun('sync'); else syMsg('자동 맞추기 꺼짐 — PC 발급기에서 켠 뒤 [QR 보이기]로 다시 찍으세요'); }
   catch (e) { say('#lockmsg', '비밀번호가 맞지 않습니다', true); } finally { $('#unlock').disabled = false; } };
 $('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlock').click(); });
-const lockNow = () => { KEY = null; LAST = null; $('#out').hidden = true; $('#ser').textContent = ''; $('#paste').value = ''; paint(); };
+const lockNow = () => { KEY = null; SYK = null; LAST = null; $('#out').hidden = true; $('#ser').textContent = ''; $('#paste').value = ''; paint(); };
 $('#lockbtn').onclick = lockNow;
 let HID = 0; document.addEventListener('visibilitychange', () => { if (document.hidden) HID = Date.now(); else if (HID && Date.now() - HID > 180000 && KEY) { lockNow(); say('#lockmsg', '오래 쉬어서 잠갔습니다 — 비밀번호를 다시 넣어 주세요'); } });
 /* ---- 받은 글 붙여 넣기 ---- */
@@ -176,8 +179,8 @@ const saveLog = L => ls.set('fm_m_log', JSON.stringify(L));
 $('#make').onclick = async () => { if (!KEY) return paint(); const who = $('#who').value.trim(); const pc = document.querySelector('[name=kind]:checked').value === 'pc';
   if (!who) return say('#makemsg', '받는 사람을 적어 주세요', true);
   let mh = null; if (pc) { mh = await parseReq($('#req').value); if (!mh) return say('#makemsg', '요청 코드가 맞지 않습니다 — 16글자(XXXX-XXXX-XXXX-XXXX)를 다시 확인해 주세요', true); }
-  const r = await makeSerial(mh); LAST = { at: new Date().toISOString().slice(0, 10), who, memo: $('#memo').value.trim(), type: pc ? '이 PC 전용' : '여러 PC용', id: r.id, req: pc ? group(b32clean($('#req').value), 4) : '', serial: r.serial, by: '핸드폰' };
-  const L = log(); L.unshift(LAST); saveLog(L); paintLog();
+  const r = await makeSerial(mh); LAST = { at: new Date().toISOString().slice(0, 10), who, memo: $('#memo').value.trim(), type: pc ? '이 PC 전용' : '여러 PC용', id: r.id, req: pc ? group(b32clean($('#req').value), 4) : '', serial: r.serial, by: '핸드폰', ts: Date.now() };
+  const L = log(); L.unshift(LAST); saveLog(L); paintLog(); syRun('sync');
   $('#ser').textContent = r.serial; $('#sid').textContent = r.id; $('#out').hidden = false; say('#makemsg', `${who}님 시리얼을 만들었습니다 (${LAST.type})`); $('#out').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 const msgOf = x => `[폴더 관리 프로그램 시리얼]\n받는 분: ${x.who}\n종류: ${x.type}\n\n${x.serial}\n\n프로그램을 처음 켜면 나오는 '정품 등록' 화면 ②칸에 위 시리얼을 통째로 붙여 넣고 [등록하고 시작]을 누르세요.\n이 시리얼은 ${x.who}님만 쓰는 것입니다. 남에게 주지 마세요. — 제작자 박효원`;
 const copy = async t => { try { await navigator.clipboard.writeText(t); say('#makemsg', '복사했습니다 — 카카오톡 대화방에 붙여 넣어 보내세요'); } catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); say('#makemsg', '복사했습니다'); } catch (e2) { say('#makemsg', '복사하지 못했습니다 — 시리얼을 길게 눌러 복사하세요', true); } ta.remove(); } };
@@ -216,8 +219,69 @@ $('#imp').onclick = () => $('#impfile').click();
 $('#impfile').onchange = async () => { const f = $('#impfile').files[0]; $('#impfile').value = ''; if (!f) return;
   const r = logImport(csvText(await f.arrayBuffer()), PUB, log());
   if (r.err) return say('#impmsg', r.err, true);
-  saveLog(r.list); paintLog(); say('#impmsg', `${r.add}건 가져왔습니다` + (r.dup ? ` · 이미 있던 것 ${r.dup}건` : '') + (r.bad ? ` · 시리얼이 맞지 않는 줄 ${r.bad}건 뺌` : '') + ` — 지금 기록 ${r.list.length}건`); };
-$('#forget').onclick = () => { if (!confirm('이 핸드폰에서 발급 열쇠를 지울까요? (발급 기록은 남습니다)')) return; ls.del('fm_m_vault'); lockNow(); say('#keymsg', '지웠습니다. 다시 쓰려면 PC 발급기의 QR을 찍으세요.'); };
+  saveLog(r.list); paintLog(); syRun('sync'); say('#impmsg', `${r.add}건 가져왔습니다` + (r.dup ? ` · 이미 있던 것 ${r.dup}건` : '') + (r.bad ? ` · 시리얼이 맞지 않는 줄 ${r.bad}건 뺌` : '') + ` — 지금 기록 ${r.list.length}건`); };
+$('#forget').onclick = () => { if (!confirm('이 핸드폰에서 발급 열쇠를 지울까요? (발급 기록은 남습니다)')) return; ls.del('fm_m_vault'); ls.del('fm_sync_tok'); lockNow(); say('#keymsg', '지웠습니다. 다시 쓰려면 PC 발급기의 QR을 찍으세요.'); };
+/* 기록 자동 맞추기 (PC·핸드폰 공통) — 비공개 저장소 pro-hyowon/fm-log의 log.fmlog
+   · 기록·토큰은 발급 열쇠(seed)에서 HKDF로 만든 AES-GCM 열쇠로 잠금 → 저장소 안에서도 못 읽음, 비밀번호를 바꿔도 같은 열쇠
+   · 합치기: 시리얼로 한 번만, 'clr'(모두 지운 때)보다 앞선 것은 뺌
+   쓰는 쪽에서 준비: KEY(열린 열쇠), syLog()/sySave(L)/syPaint() 함수, syMsg(글, 나쁨) */
+const SY_REPO = 'pro-hyowon/fm-log', SY_PATH = 'log.fmlog', SY_API = `https://api.github.com/repos/${SY_REPO}`;
+const syB64u = u => toB64(u).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+const syU8 = s => fromB64(String(s).replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((String(s).length + 3) % 4));
+let SYK = null; /* { log, tok } */
+async function syKeys() { if (SYK) return SYK; const raw = await crypto.subtle.importKey('raw', fromB64(KEY.seed), 'HKDF', false, ['deriveKey']);
+  const mk = info => crypto.subtle.deriveKey({ name: 'HKDF', hash: 'SHA-256', salt: enc.encode('FM-SYNC-v1'), info: enc.encode(info) }, raw, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  SYK = { log: await mk('log'), tok: await mk('token') }; return SYK; }
+const syEnc = async (k, s) => { const iv = crypto.getRandomValues(new Uint8Array(12)); const ct = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, k, enc.encode(s))); return syB64u(iv) + '.' + syB64u(ct); };
+const syDec = async (k, t) => { const [a, b] = String(t || '').split('.'); return new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: syU8(a) }, k, syU8(b))); };
+const syLS = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} }, del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
+async function syToken() { const t = syLS.get('fm_sync_tok'); if (!t || !KEY) return ''; try { return await syDec((await syKeys()).tok, t); } catch (e) { return ''; } }
+async function sySetToken(tok) { if (!tok) { syLS.del('fm_sync_tok'); return; } syLS.set('fm_sync_tok', await syEnc((await syKeys()).tok, tok)); }
+const syNorm = x => String(x.serial || '').replace(/\s+/g, '');
+function syMerge(local, remote, clr) {
+  const m = new Map();
+  for (const x of [...(remote || []), ...(local || [])]) { if (!x || !x.serial) continue; const e = Object.assign({}, x); if (!e.ts) e.ts = Date.parse(e.at) || 0; if (e.ts < clr) continue;
+    const k = syNorm(e); const o = m.get(k); if (!o) { m.set(k, e); continue; } for (const f of ['at', 'who', 'memo', 'type', 'id', 'req', 'by']) if (!o[f] && e[f]) o[f] = e[f]; o.ts = Math.min(o.ts, e.ts); }
+  return [...m.values()].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')) || (b.ts - a.ts));
+}
+const syKeyOf = L => L.map(syNorm).sort().join('|');
+async function syFetch(url, opt, tok) { const r = await fetch(url, Object.assign({ cache: 'no-store' }, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json' }, (opt && opt.headers) || {}) })); return r; }
+let SY_BUSY = null, SY_AGAIN = false;
+async function syRun(mode) { /* mode: 'sync' | 'clear' */
+  if (SY_BUSY) { SY_AGAIN = true; return SY_BUSY; }
+  SY_BUSY = (async () => { try { return await syOnce(mode); } finally { SY_BUSY = null; if (SY_AGAIN && mode !== 'clear') { SY_AGAIN = false; syRun('sync'); } } })(); return SY_BUSY;
+}
+async function syOnce(mode) {
+  const tok = await syToken(); if (!tok) { syMsg('자동 맞추기 꺼짐'); return { off: true }; }
+  const K = (await syKeys()).log; syMsg('기록 맞추는 중…');
+  try {
+    for (let tries = 0; tries < 4; tries++) {
+      const g = await syFetch(`${SY_API}/contents/${SY_PATH}`, {}, tok); let sha, rem = { v: 1, clr: 0, list: [] };
+      if (g.ok) { const j = await g.json(); sha = j.sha; const txt = new TextDecoder().decode(fromB64(String(j.content || '').replace(/\s+/g, ''))).trim();
+        const mm = txt.match(/^FML1\.(.+)$/); if (!mm) throw new Error('fm-log의 log.fmlog가 이 발급기 기록이 아닙니다');
+        try { rem = JSON.parse(await syDec(K, mm[1])); } catch (e) { throw new Error('fm-log의 기록을 이 열쇠로 열 수 없습니다 (다른 발급기의 기록?)'); } }
+      else if (g.status === 401) throw new Error('토큰이 맞지 않거나 기한이 지났습니다 — PC 발급기에서 새 토큰으로 다시 켜 주세요');
+      else if (g.status === 404) { const rp = await syFetch(SY_API, {}, tok); if (rp.status === 404 || rp.status === 403) throw new Error('fm-log 저장소에 들어가지 못했습니다 — 비공개 저장소 fm-log를 만들고, 토큰에 fm-log의 Contents 읽기·쓰기 권한을 주세요'); if (!rp.ok) throw new Error('fm-log에 들어가지 못했습니다 (' + rp.status + ')'); }
+      else if (g.status === 403) throw new Error('fm-log에 권한이 없습니다 — 토큰에 fm-log의 Contents 읽기·쓰기 권한을 주세요');
+      else throw new Error('기록을 받지 못했습니다 (' + g.status + ')');
+      const lclr = +(syLS.get('fm_sync_clr') || 0); let clr = Math.max(rem.clr || 0, lclr); let list;
+      if (mode === 'clear') { clr = Date.now(); list = []; } else list = syMerge(syLog(), rem.list, clr);
+      syLS.set('fm_sync_clr', String(clr)); sySave(list); syPaint();
+      if (sha && mode !== 'clear' && syKeyOf(list) === syKeyOf(rem.list || []) && (rem.clr || 0) === clr) { syDone(list.length); return { list }; }
+      const body = 'FML1.' + await syEnc(K, JSON.stringify({ v: 1, clr, list })) + '\n';
+      const p = await syFetch(`${SY_API}/contents/${SY_PATH}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: mode === 'clear' ? '기록 모두 지움' : '기록 맞추기', content: toB64(enc.encode(body)), sha }) }, tok);
+      if (p.ok) { syDone(list.length); return { list }; }
+      if (p.status === 409 || p.status === 422) continue; /* 다른 곳이 먼저 바꿈 → 다시 받아서 합침 */
+      if (p.status === 401) throw new Error('토큰이 맞지 않거나 기한이 지났습니다 — PC 발급기에서 새 토큰으로 다시 켜 주세요');
+      if (p.status === 403 || p.status === 404) throw new Error('fm-log에 쓸 권한이 없습니다 — 토큰에 fm-log의 Contents 읽기·쓰기 권한을 주세요');
+      throw new Error('기록을 올리지 못했습니다 (' + p.status + ')');
+    }
+    throw new Error('여러 곳에서 동시에 바꾸고 있습니다 — 잠시 뒤 [지금 맞추기]를 눌러 주세요');
+  } catch (e) { const off = e instanceof TypeError || e.message === 'Failed to fetch' || /NetworkError|Load failed/.test(e.message); syMsg(off ? '인터넷이 안 돼서 못 맞췄습니다 — 다음에 열거나 발급할 때 맞춥니다' : e.message, !off); return { err: e.message }; }
+}
+const syDone = n => { const d = new Date(); syMsg(`맞췄습니다 — PC·핸드폰 기록 ${n}건 (${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')})`); };
+const syLog = () => log(); const sySave = L => saveLog(L); const syPaint = () => paintLog(); const syMsg = (t, bad) => say('#sy_msg', t, bad);
+$('#sy_now').onclick = () => { if (!KEY) return paint(); syRun('sync'); };
 paint();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('issuer-sw.js').catch(() => {});
 </script>
