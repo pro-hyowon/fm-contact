@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob: mediastream:; connect-src 'none'; manifest-src 'self'; worker-src 'self'; form-action 'none'; base-uri 'none'; frame-ancestors 'none'">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex,nofollow">
+<meta name="theme-color" content="#000000">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="FM 발급">
+<link rel="manifest" href="issuer.webmanifest"><link rel="apple-touch-icon" href="issuer-icon-192.png">
+<title>FM 시리얼 발급 (핸드폰)</title>
+<style>
+@font-face{font-family:GM;src:local('G마켓 산스 TTF Medium'),local('GmarketSansMedium'),url(issuer-font.woff) format('woff');font-display:swap}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:#fff;color:#000;font:15px/1.55 GM,-apple-system,'Apple SD Gothic Neo','Malgun Gothic',sans-serif;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.wrap{max-width:560px;margin:0 auto;padding:14px 14px 40px}
+h1{font-size:18px;margin:4px 0 2px}
+h2{font-size:15px;margin:22px 0 8px;border-bottom:1.5px solid #000;padding-bottom:4px}
+.muted{color:#555;font-size:13px}
+.box{border:1px solid #000;border-radius:12px;padding:14px;margin-top:12px}
+input,textarea,select{font:inherit;font-size:16px;border:1px solid #000;border-radius:8px;padding:10px 12px;background:#fff;color:#000;width:100%}
+textarea{font:14px/1.5 ui-monospace,Menlo,Consolas,monospace;min-height:120px}
+button{font:inherit;border:1.5px solid #000;background:#fff;color:#000;border-radius:10px;padding:12px 14px;cursor:pointer;min-height:46px}
+button.pri{background:#000;color:#fff}
+button:disabled{opacity:.4}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.row>button{flex:1 1 140px}
+label.f{display:block;margin-top:10px;font-size:13px;color:#333}
+label.f input{margin-top:4px}
+label.r{display:flex;gap:8px;align-items:center;margin-top:8px}
+label.r input{width:auto}
+.ser{font:600 15px/1.6 ui-monospace,Menlo,Consolas,monospace;border:1.5px solid #000;border-radius:10px;padding:12px;word-break:break-all;user-select:all;-webkit-user-select:all;margin-top:10px}
+.msg{min-height:20px;margin-top:8px;font-size:14px}
+.bad{font-weight:700}
+.lst{border-top:1px solid #000;margin-top:8px}
+.lst .it{border-bottom:1px solid #ccc;padding:8px 0;font-size:13px;display:flex;gap:8px;align-items:center}
+.lst .it div{flex:1;min-width:0}
+.lst .it b{font-size:14px}
+.lst .it button{min-height:36px;padding:6px 10px;font-size:13px}
+#cam{width:100%;border-radius:10px;border:1px solid #000;margin-top:10px;background:#000}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.top button{min-height:36px;padding:6px 12px;font-size:13px}
+[hidden]{display:none!important}
+</style></head>
+<body><div class="wrap">
+<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판</div></div><button id="lockbtn" hidden>잠그기</button></div>
+
+<!-- 1) 열쇠가 아직 없음 -->
+<div class="box" id="nokey" hidden>
+  <b>이 핸드폰에 발급 열쇠 넣기 (처음 한 번)</b>
+  <div class="muted" style="margin-top:6px">PC에서 시리얼 발급기를 열고 [핸드폰에서 발급하기] → [QR 보이기]를 누른 뒤, 아래 단추로 그 QR을 찍으세요. 열쇠는 비밀번호로 잠긴 채 이 핸드폰 안에만 저장되고 인터넷으로 보내지 않습니다.</div>
+  <div class="row"><button class="pri" id="scan">QR 찍기</button></div>
+  <video id="cam" playsinline muted hidden></video>
+  <details style="margin-top:12px"><summary class="muted">QR을 못 찍을 때 — 열쇠 글 붙여 넣기</summary>
+    <textarea id="keytxt" placeholder="PC 발급기에서 [열쇠 글 복사]한 것" spellcheck="false" style="margin-top:8px;min-height:90px"></textarea>
+    <div class="row"><button id="keyput">넣기</button></div></details>
+  <div class="msg" id="keymsg"></div>
+</div>
+
+<!-- 2) 잠김 -->
+<div class="box" id="lock" hidden>
+  <b>비밀번호</b> <span class="muted">— PC 발급기와 같은 비밀번호</span>
+  <input type="password" id="pw" placeholder="발급기 비밀번호" autocomplete="current-password" style="margin-top:8px">
+  <div class="row"><button class="pri" id="unlock">열기</button></div>
+  <div class="msg" id="lockmsg"></div>
+</div>
+
+<!-- 3) 발급 -->
+<div id="main" hidden>
+  <h2>새 시리얼 만들기</h2>
+  <div class="muted">카카오톡으로 받은 등록 요청 글을 길게 눌러 복사한 뒤 [붙여 넣기]를 누르세요. 이름·연락처·요청 코드가 저절로 채워집니다.</div>
+  <div class="row"><button class="pri" id="pastebtn">붙여 넣기</button><button id="clear">비우기</button></div>
+  <textarea id="paste" placeholder="[폴더 관리 프로그램 정품 등록 요청]&#10;이름: …&#10;연락처: …&#10;요청 코드: XXXX-XXXX-XXXX-XXXX" spellcheck="false" style="margin-top:8px;min-height:96px"></textarea>
+  <div class="msg" id="pastemsg"></div>
+  <label class="f">받는 사람 <input id="who" placeholder="이름 또는 회사" autocomplete="off"></label>
+  <label class="f">메모 <input id="memo" placeholder="연락처 등 (선택)" autocomplete="off"></label>
+  <label class="r"><input type="radio" name="kind" value="pc" checked> 이 PC 한 대 전용 (요청 코드 필요 — 권장)</label>
+  <label class="r"><input type="radio" name="kind" value="any"> 여러 PC용 (요청 코드 없이)</label>
+  <label class="f" id="reqrow">요청 코드 <input id="req" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" style="font-family:ui-monospace,Menlo,monospace;text-transform:uppercase"></label>
+  <div class="row"><button class="pri" id="make">시리얼 만들기</button></div>
+  <div class="msg" id="makemsg"></div>
+  <div id="out" hidden>
+    <div class="ser" id="ser"></div>
+    <div class="muted" style="margin-top:6px">시리얼 번호 <b id="sid"></b> — [카카오톡 등으로 보내기]를 누르고 받은 사람 대화방을 고르세요.</div>
+    <div class="row"><button class="pri" id="share" style="flex-basis:100%">카카오톡 등으로 보내기</button><button id="copymsg">안내 문구와 함께 복사</button><button id="copy">시리얼만 복사</button></div>
+  </div>
+
+  <h2>이 핸드폰의 발급 기록</h2>
+  <div class="muted">기록은 이 핸드폰에만 남습니다 (PC 발급기 기록과 따로). 가끔 [기록 내보내기]로 보관하세요.</div>
+  <div class="row"><button id="csv">기록 내보내기 (CSV)</button></div>
+  <div class="lst" id="log"></div>
+
+  <h2>이 핸드폰에서 열쇠 지우기</h2>
+  <div class="muted">핸드폰을 바꾸거나 남에게 줄 때 누르세요. 지워도 PC 발급기와 이미 준 시리얼은 그대로입니다.</div>
+  <div class="row"><button id="forget">열쇠 지우기</button></div>
+</div>
+<div class="muted" style="margin-top:24px">이 화면은 인터넷으로 아무것도 보내지 않습니다 (보내기는 핸드폰의 공유 창으로만). 3분 넘게 다른 앱을 쓰면 저절로 잠깁니다.</div>
+</div>
+<script src="issuer-nacl.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s); const enc = new TextEncoder();
+const PUB = 'VkuS3/AEvDKXY4NmuP1mm+A0190cjUOHhkuiBPA0sGk=';
+const B32 = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
+const b32enc = u => { let bits = 0, val = 0, out = ''; for (const b of u) { val = (val << 8) | b; bits += 8; while (bits >= 5) { out += B32[(val >>> (bits - 5)) & 31]; bits -= 5; } } if (bits > 0) out += B32[(val << (5 - bits)) & 31]; return out; };
+const b32clean = s => String(s || '').toUpperCase().replace(/O/g, '0').replace(/[IL]/g, '1').replace(/[^0-9A-HJKMNP-TV-Z]/g, '');
+const b32dec = s => { s = b32clean(s); let bits = 0, val = 0; const out = []; for (const ch of s) { const v = B32.indexOf(ch); val = ((val << 5) | v) & 0xffffff; bits += 5; if (bits >= 8) { out.push((val >>> (bits - 8)) & 255); bits -= 8; } } return new Uint8Array(out); };
+const group = (s, n) => s.match(new RegExp(`.{1,${n}}`, 'g')).join('-');
+const hex = u => [...u].map(b => b.toString(16).padStart(2, '0')).join('');
+const sha = async (...a) => new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a.join('|'))));
+const fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0)); const toB64 = u => btoa(String.fromCharCode(...u));
+const fromB64url = s => fromB64(s.replace(/-/g, '+').replace(/_/g, '/') + '==='.slice((s.length + 3) % 4));
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const say = (el, t, bad) => { $(el).innerHTML = bad ? `<span class="bad">${esc(t)}</span>` : esc(t); };
+const ls = { get: k => { try { return localStorage.getItem(k); } catch (e) { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); return true; } catch (e) { return false; } }, del: k => { try { localStorage.removeItem(k); } catch (e) {} } };
+let KEY = null; /* { seed, k } — 열었을 때만 메모리에 */
+/* ---- 열쇠(잠긴 채) 넣기 ---- */
+function vaultOk(o) { return o && o.v === 1 && o.pub === PUB && typeof o.salt === 'string' && typeof o.iv === 'string' && typeof o.ct === 'string' && Number.isFinite(o.iter) && o.iter >= 100000; }
+function takeKey(text) {
+  let t = String(text || '').trim(); const m = t.match(/[#&?]k=([A-Za-z0-9_-]+)/); if (m) t = m[1];
+  let o = null; try { o = JSON.parse(new TextDecoder().decode(fromB64url(t.replace(/\s+/g, '')))); } catch (e) { try { o = JSON.parse(t); } catch (e2) {} }
+  if (!vaultOk(o)) return false; if (!ls.set('fm_m_vault', JSON.stringify(o))) return false; return true;
+}
+const vault = () => { try { const o = JSON.parse(ls.get('fm_m_vault') || 'null'); return vaultOk(o) ? o : null; } catch (e) { return null; } };
+function paint() { const v = vault(); $('#nokey').hidden = !!v; $('#lock').hidden = !v || !!KEY; $('#main').hidden = !KEY; $('#lockbtn').hidden = !KEY; if (v && !KEY) setTimeout(() => $('#pw').focus(), 50); }
+if (location.hash.length > 3) { const ok = takeKey(location.hash); history.replaceState(null, '', location.pathname); setTimeout(() => say('#lockmsg', ok ? '열쇠를 이 핸드폰에 넣었습니다 — 비밀번호를 넣어 여세요.' : '', false), 0); if (!ok) setTimeout(() => say('#keymsg', '열쇠 QR이 아닙니다 — PC 발급기의 [핸드폰에서 발급하기] QR을 찍어 주세요', true), 0); }
+$('#keyput').onclick = () => { if (takeKey($('#keytxt').value)) { $('#keytxt').value = ''; paint(); say('#lockmsg', '열쇠를 이 핸드폰에 넣었습니다 — 비밀번호를 넣어 여세요.'); } else say('#keymsg', '열쇠 글이 아닙니다 — PC 발급기에서 [열쇠 글 복사]한 것을 그대로 붙여 넣어 주세요', true); };
+let STREAM = null;
+const stopCam = () => { if (STREAM) STREAM.getTracks().forEach(t => t.stop()); STREAM = null; $('#cam').hidden = true; $('#scan').textContent = 'QR 찍기'; };
+$('#scan').onclick = async () => {
+  if (STREAM) return stopCam();
+  if (typeof jsQR === 'undefined') { try { await new Promise((ok, no) => { const s = document.createElement('script'); s.src = 'issuer-qr.js'; s.onload = ok; s.onerror = no; document.head.appendChild(s); }); } catch (e) { return say('#keymsg', 'QR 읽기 도구를 불러오지 못했습니다 — 인터넷에 연결해 한 번 다시 열어 주세요', true); } }
+  try { STREAM = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false }); } catch (e) { return say('#keymsg', '카메라를 쓸 수 없습니다 — 카메라 권한을 허용하거나, 핸드폰 기본 카메라로 QR을 찍어 주세요', true); }
+  const v = $('#cam'); v.srcObject = STREAM; v.hidden = false; await v.play().catch(() => {}); $('#scan').textContent = '찍기 그만'; say('#keymsg', 'PC 화면의 QR을 네모 안에 비춰 주세요');
+  const cv = document.createElement('canvas'); const cx = cv.getContext('2d', { willReadFrequently: true });
+  const tick = () => { if (!STREAM) return; if (v.videoWidth) { const w = Math.min(v.videoWidth, 900), h = Math.round(v.videoHeight * w / v.videoWidth); cv.width = w; cv.height = h; cx.drawImage(v, 0, 0, w, h); const q = jsQR(cx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+      if (q && q.data) { if (takeKey(q.data)) { stopCam(); paint(); say('#lockmsg', '열쇠를 이 핸드폰에 넣었습니다 — 비밀번호를 넣어 여세요.'); return; } say('#keymsg', '다른 QR입니다 — PC 발급기의 [핸드폰에서 발급하기] QR을 찍어 주세요', true); } }
+    requestAnimationFrame(tick); };
+  requestAnimationFrame(tick); };
+/* ---- 열기·잠그기 ---- */
+async function pbk(pw, salt, iter) { const base = await crypto.subtle.importKey('raw', enc.encode(pw), 'PBKDF2', false, ['deriveKey']); return crypto.subtle.deriveKey({ name: 'PBKDF2', salt, iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']); }
+$('#unlock').onclick = async () => { const B = vault(); if (!B) return paint(); say('#lockmsg', '여는 중…'); $('#unlock').disabled = true;
+  try { const key = await pbk($('#pw').value, fromB64(B.salt), B.iter); const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: fromB64(B.iv) }, key, fromB64(B.ct)); const K = JSON.parse(new TextDecoder().decode(pt));
+    const kp = nacl.sign.keyPair.fromSeed(fromB64(K.seed)); if (toB64(kp.publicKey) !== PUB) throw new Error('pub'); KEY = K; $('#pw').value = ''; say('#lockmsg', ''); paint(); paintLog(); }
+  catch (e) { say('#lockmsg', '비밀번호가 맞지 않습니다', true); } finally { $('#unlock').disabled = false; } };
+$('#pw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlock').click(); });
+const lockNow = () => { KEY = null; LAST = null; $('#out').hidden = true; $('#ser').textContent = ''; $('#paste').value = ''; paint(); };
+$('#lockbtn').onclick = lockNow;
+let HID = 0; document.addEventListener('visibilitychange', () => { if (document.hidden) HID = Date.now(); else if (HID && Date.now() - HID > 180000 && KEY) { lockNow(); say('#lockmsg', '오래 쉬어서 잠갔습니다 — 비밀번호를 다시 넣어 주세요'); } });
+/* ---- 받은 글 붙여 넣기 ---- */
+function fillFrom(t) { const m = $('#pastemsg'); if (!t.trim()) { m.textContent = ''; return; }
+  const line = re => { const x = t.match(re); return x ? x[1].trim() : ''; };
+  const nm = line(/(?:^|\n)\s*(?:이름|Name|名前|お名前)\s*[:：]\s*([^\n]+)/i), ct = line(/(?:^|\n)\s*(?:연락처|Contact|連絡先)\s*[:：]\s*([^\n]+)/i);
+  const rc = (t.toUpperCase().match(/[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}/) || [''])[0];
+  if (nm) $('#who').value = nm; if (ct) $('#memo').value = ct; if (rc) { $('#req').value = rc; document.querySelector('[name=kind][value=pc]').checked = true; $('#reqrow').hidden = false; }
+  m.textContent = (nm || ct || rc) ? `채웠습니다 — ${nm || '(이름 없음)'} · ${ct || '(연락처 없음)'} · ${rc || '(요청 코드 없음)'}. 확인하고 [시리얼 만들기]를 누르세요.` : '글에서 이름·연락처·요청 코드를 찾지 못했습니다 — 직접 적어 주세요'; }
+$('#paste').addEventListener('input', () => fillFrom($('#paste').value));
+$('#pastebtn').onclick = async () => { try { const t = await navigator.clipboard.readText(); if (!t) throw new Error('empty'); $('#paste').value = t; fillFrom(t); } catch (e) { $('#paste').focus(); say('#pastemsg', '자동으로 못 붙였습니다 — 아래 칸을 길게 눌러 [붙여넣기]를 고르세요'); } };
+$('#clear').onclick = () => { $('#paste').value = ''; $('#who').value = ''; $('#memo').value = ''; $('#req').value = ''; $('#pastemsg').textContent = ''; $('#makemsg').textContent = ''; $('#out').hidden = true; };
+document.querySelectorAll('[name=kind]').forEach(r => r.onchange = () => { $('#reqrow').hidden = document.querySelector('[name=kind]:checked').value !== 'pc'; });
+/* ---- 시리얼 만들기 (PC 발급기와 같은 방식) ---- */
+async function parseReq(s) { const c = b32clean(s); if (c.length !== 16) return null; const b = b32dec(c).slice(0, 10); const mh = b.slice(0, 8); const ck = (await sha('FM-CK', hex(mh))).slice(0, 2); return ck[0] === b[8] && ck[1] === b[9] ? mh : null; }
+async function makeSerial(mh) {
+  const d = new Uint8Array(32); d[0] = 1; d[1] = mh ? 1 : 0; const id = crypto.getRandomValues(new Uint8Array(4)); d.set(id, 2);
+  const days = Math.floor((Date.now() - Date.UTC(2026, 0, 1)) / 864e5); d[6] = (days >> 8) & 255; d[7] = days & 255; if (mh) d.set(mh, 8);
+  const ID = hex(id).toUpperCase(); const mask = (await sha('FM-K', ID)).slice(0, 16); const K = fromB64(KEY.k); for (let i = 0; i < 16; i++) d[16 + i] = K[i] ^ mask[i];
+  const kp = nacl.sign.keyPair.fromSeed(fromB64(KEY.seed)); const sig = nacl.sign.detached(d, kp.secretKey);
+  const all = new Uint8Array(96); all.set(d, 0); all.set(sig, 32); return { id: ID, serial: 'FM1-' + group(b32enc(all), 5) };
+}
+let LAST = null;
+const log = () => { try { return JSON.parse(ls.get('fm_m_log') || '[]'); } catch (e) { return []; } };
+const saveLog = L => ls.set('fm_m_log', JSON.stringify(L));
+$('#make').onclick = async () => { if (!KEY) return paint(); const who = $('#who').value.trim(); const pc = document.querySelector('[name=kind]:checked').value === 'pc';
+  if (!who) return say('#makemsg', '받는 사람을 적어 주세요', true);
+  let mh = null; if (pc) { mh = await parseReq($('#req').value); if (!mh) return say('#makemsg', '요청 코드가 맞지 않습니다 — 16글자(XXXX-XXXX-XXXX-XXXX)를 다시 확인해 주세요', true); }
+  const r = await makeSerial(mh); LAST = { at: new Date().toISOString().slice(0, 10), who, memo: $('#memo').value.trim(), type: pc ? '이 PC 전용' : '여러 PC용', id: r.id, req: pc ? group(b32clean($('#req').value), 4) : '', serial: r.serial, by: '핸드폰' };
+  const L = log(); L.unshift(LAST); saveLog(L); paintLog();
+  $('#ser').textContent = r.serial; $('#sid').textContent = r.id; $('#out').hidden = false; say('#makemsg', `${who}님 시리얼을 만들었습니다 (${LAST.type})`); $('#out').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
+const msgOf = x => `[폴더 관리 프로그램 시리얼]\n받는 분: ${x.who}\n종류: ${x.type}\n\n${x.serial}\n\n프로그램을 처음 켜면 나오는 '정품 등록' 화면 ②칸에 위 시리얼을 통째로 붙여 넣고 [등록하고 시작]을 누르세요.\n이 시리얼은 ${x.who}님만 쓰는 것입니다. 남에게 주지 마세요. — 제작자 박효원`;
+const copy = async t => { try { await navigator.clipboard.writeText(t); say('#makemsg', '복사했습니다 — 카카오톡 대화방에 붙여 넣어 보내세요'); } catch (e) { const ta = document.createElement('textarea'); ta.value = t; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); say('#makemsg', '복사했습니다'); } catch (e2) { say('#makemsg', '복사하지 못했습니다 — 시리얼을 길게 눌러 복사하세요', true); } ta.remove(); } };
+$('#share').onclick = async () => { if (!LAST) return; const text = msgOf(LAST); if (navigator.share) { try { await navigator.share({ text }); say('#makemsg', '보냈습니다 (공유 창에서 고른 곳으로)'); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); };
+$('#copymsg').onclick = () => LAST && copy(msgOf(LAST));
+$('#copy').onclick = () => LAST && copy(LAST.serial);
+function paintLog() { const L = log(); $('#log').innerHTML = L.length ? L.map((x, i) => `<div class="it"><div><b>${esc(x.who)}</b> · ${esc(x.type)} · ${esc(x.at)}<br><span class="muted">${esc(x.id)} ${x.req ? '· ' + esc(x.req) : ''} ${x.memo ? '· ' + esc(x.memo) : ''}</span></div><button data-cp="${i}">다시 보내기</button></div>`).join('') : '<div class="it"><div class="muted">아직 없습니다</div></div>';
+  document.querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => { const x = log()[+b.dataset.cp]; const text = msgOf(x); if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); }); }
+$('#csv').onclick = async () => { const L = log(); const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  const csv = '﻿' + [['발급일', '받는 사람', '종류', '시리얼 번호', '요청 코드', '메모', '시리얼'].map(q).join(','), ...L.map(x => [x.at, x.who, x.type, x.id, x.req, x.memo, x.serial].map(q).join(','))].join('\r\n');
+  const name = `시리얼발급기록_핸드폰_${new Date().toISOString().slice(0, 10)}.csv`; const file = typeof File !== 'undefined' ? new File([csv], name, { type: 'text/csv' }) : null;
+  if (file && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000); };
+$('#forget').onclick = () => { if (!confirm('이 핸드폰에서 발급 열쇠를 지울까요? (발급 기록은 남습니다)')) return; ls.del('fm_m_vault'); lockNow(); say('#keymsg', '지웠습니다. 다시 쓰려면 PC 발급기의 QR을 찍으세요.'); };
+paint();
+if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('issuer-sw.js').catch(() => {});
+</script>
+</body></html>
