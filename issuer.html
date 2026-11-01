@@ -38,13 +38,15 @@ label.r input{width:auto}
 .lst .it div{flex:1;min-width:0}
 .lst .it b{font-size:14px}
 .lst .it button{min-height:36px;padding:6px 10px;font-size:13px}
+.trh{border:1px solid #000;border-radius:10px;padding:10px 12px;margin-top:8px;font-size:13px;line-height:1.6}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 #cam{width:100%;border-radius:10px;border:1px solid #000;margin-top:10px;background:#000}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px}
 .top button{min-height:36px;padding:6px 12px;font-size:13px}
 [hidden]{display:none!important}
 </style></head>
 <body><div class="wrap">
-<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판 v1.2</div></div><button id="lockbtn" hidden>잠그기</button></div>
+<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판 v1.3</div></div><button id="lockbtn" hidden>잠그기</button></div>
 
 <!-- 1) 열쇠가 아직 없음 -->
 <div class="box" id="nokey" hidden>
@@ -75,6 +77,9 @@ label.r input{width:auto}
   <div class="msg" id="pastemsg"></div>
   <label class="f">받는 사람 <input id="who" placeholder="이름 또는 회사" autocomplete="off"></label>
   <label class="f">메모 <input id="memo" placeholder="연락처 등 (선택)" autocomplete="off"></label>
+  <div class="two"><label class="f">경로 <select id="t_route"><option value="">-</option><option>카톡</option><option>메일</option><option>문자</option><option>직접</option></select></label><label class="f">배포처 <input id="t_dist" placeholder="코드 5글자" maxlength="5" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;font-family:ui-monospace,Menlo,monospace"></label></div>
+  <div class="muted" id="t_distnm"></div>
+  <label class="f">소개받은 곳 <input id="t_ref" placeholder="판매처·영업 담당자 (선택)" autocomplete="off"></label>
   <label class="r"><input type="radio" name="kind" value="pc" checked> 이 PC 한 대 전용 (요청 코드 필요 — 권장)</label>
   <label class="r"><input type="radio" name="kind" value="any"> 여러 PC용 (요청 코드 없이)</label>
   <label class="f" id="reqrow">요청 코드 <input id="req" placeholder="XXXX-XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" style="font-family:ui-monospace,Menlo,monospace;text-transform:uppercase"></label>
@@ -85,6 +90,12 @@ label.r input{width:auto}
     <div class="muted" style="margin-top:6px">시리얼 번호 <b id="sid"></b> — [카카오톡 등으로 보내기]를 누르고 받은 사람 대화방을 고르세요.</div>
     <div class="row"><button class="pri" id="share" style="flex-basis:100%">카카오톡 등으로 보내기</button><button id="copymsg">안내 문구와 함께 복사</button><button id="copy">시리얼만 복사</button></div>
   </div>
+
+  <h2>시리얼 주인 찾기</h2>
+  <div class="muted">돌아다니는 시리얼·시리얼 번호(8글자)·요청 코드·배포처 코드·이름을 넣으면 누구에게 언제 어떤 경로로 준 것인지 보여 줍니다.</div>
+  <textarea id="f_q" placeholder="FM1-… · 4AD8DBDB · XXXX-XXXX-XXXX-XXXX · 배포처 코드 · 이름" spellcheck="false" style="margin-top:8px;min-height:70px"></textarea>
+  <div class="row"><button class="pri" id="f_go">찾기</button><button id="f_paste">붙여 넣고 찾기</button></div>
+  <div class="msg" id="f_msg"></div><div id="f_out"></div>
 
   <h2>이 핸드폰의 발급 기록</h2>
   <div class="muted">PC 발급기에서 '기록 자동 맞추기'를 켜고 QR을 찍었으면 PC와 이 핸드폰의 기록이 저절로 합쳐집니다. 안 켰으면 [기록 내보내기]·[기록 가져오기]로 합치세요.</div>
@@ -158,11 +169,12 @@ function fillFrom(t) { const m = $('#pastemsg'); if (!t.trim()) { m.textContent 
   const line = re => { const x = t.match(re); return x ? x[1].trim() : ''; };
   const nm = line(/(?:^|\n)\s*(?:이름|Name|名前|お名前)\s*[:：]\s*([^\n]+)/i), ct = line(/(?:^|\n)\s*(?:연락처|Contact|連絡先)\s*[:：]\s*([^\n]+)/i);
   const rc = (t.toUpperCase().match(/[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}/) || [''])[0];
-  if (nm) $('#who').value = nm; if (ct) $('#memo').value = ct; if (rc) { $('#req').value = rc; document.querySelector('[name=kind][value=pc]').checked = true; $('#reqrow').hidden = false; }
-  m.textContent = (nm || ct || rc) ? `채웠습니다 — ${nm || '(이름 없음)'} · ${ct || '(연락처 없음)'} · ${rc || '(요청 코드 없음)'}. 확인하고 [시리얼 만들기]를 누르세요.` : '글에서 이름·연락처·요청 코드를 찾지 못했습니다 — 직접 적어 주세요'; }
+  if (nm || ct || rc) { $('#who').value = nm; $('#memo').value = ct; $('#req').value = rc; } if (rc) { document.querySelector('[name=kind][value=pc]').checked = true; $('#reqrow').hidden = false; }
+  const tr = trParse(t); $('#t_route').value = tr.route || ''; $('#t_ref').value = tr.ref || ''; $('#t_dist').value = tr.dist || ''; trDistShow(); const ex = trDesc(tr);
+  m.textContent = (nm || ct || rc) ? `채웠습니다 — ${nm || '(이름 없음)'} · ${ct || '(연락처 없음)'} · ${rc || '(요청 코드 없음)'}${ex ? ' · ' + ex : ''}. 확인하고 [시리얼 만들기]를 누르세요.` : '글에서 이름·연락처·요청 코드를 찾지 못했습니다 — 직접 적어 주세요'; }
 $('#paste').addEventListener('input', () => fillFrom($('#paste').value));
 $('#pastebtn').onclick = async () => { try { const t = await navigator.clipboard.readText(); if (!t) throw new Error('empty'); $('#paste').value = t; fillFrom(t); } catch (e) { $('#paste').focus(); say('#pastemsg', '자동으로 못 붙였습니다 — 아래 칸을 길게 눌러 [붙여넣기]를 고르세요'); } };
-$('#clear').onclick = () => { $('#paste').value = ''; $('#who').value = ''; $('#memo').value = ''; $('#req').value = ''; $('#pastemsg').textContent = ''; $('#makemsg').textContent = ''; $('#out').hidden = true; };
+$('#clear').onclick = () => { $('#paste').value = ''; $('#who').value = ''; $('#memo').value = ''; $('#req').value = ''; $('#t_route').value = ''; $('#t_ref').value = ''; $('#t_dist').value = ''; trDistShow(); $('#pastemsg').textContent = ''; $('#makemsg').textContent = ''; $('#out').hidden = true; };
 document.querySelectorAll('[name=kind]').forEach(r => r.onchange = () => { $('#reqrow').hidden = document.querySelector('[name=kind]:checked').value !== 'pc'; });
 /* ---- 시리얼 만들기 (PC 발급기와 같은 방식) ---- */
 async function parseReq(s) { const c = b32clean(s); if (c.length !== 16) return null; const b = b32dec(c).slice(0, 10); const mh = b.slice(0, 8); const ck = (await sha('FM-CK', hex(mh))).slice(0, 2); return ck[0] === b[8] && ck[1] === b[9] ? mh : null; }
@@ -179,7 +191,7 @@ const saveLog = L => ls.set('fm_m_log', JSON.stringify(L));
 $('#make').onclick = async () => { if (!KEY) return paint(); const who = $('#who').value.trim(); const pc = document.querySelector('[name=kind]:checked').value === 'pc';
   if (!who) return say('#makemsg', '받는 사람을 적어 주세요', true);
   let mh = null; if (pc) { mh = await parseReq($('#req').value); if (!mh) return say('#makemsg', '요청 코드가 맞지 않습니다 — 16글자(XXXX-XXXX-XXXX-XXXX)를 다시 확인해 주세요', true); }
-  const r = await makeSerial(mh); LAST = { at: new Date().toISOString().slice(0, 10), who, memo: $('#memo').value.trim(), type: pc ? '이 PC 전용' : '여러 PC용', id: r.id, req: pc ? group(b32clean($('#req').value), 4) : '', serial: r.serial, by: '핸드폰', ts: Date.now() };
+  const r = await makeSerial(mh); LAST = { at: new Date().toISOString().slice(0, 10), who, memo: $('#memo').value.trim(), type: pc ? '이 PC 전용' : '여러 PC용', id: r.id, req: pc ? group(b32clean($('#req').value), 4) : '', serial: r.serial, by: '핸드폰', ts: Date.now(), route: $('#t_route').value, ref: $('#t_ref').value.trim(), dist: (/^[0-9A-HJKMNP-TV-Z]{5}$/.test($('#t_dist').value.trim().toUpperCase()) ? $('#t_dist').value.trim().toUpperCase() : '') };
   const L = log(); L.unshift(LAST); saveLog(L); paintLog(); syRun('sync');
   $('#ser').textContent = r.serial; $('#sid').textContent = r.id; $('#out').hidden = false; say('#makemsg', `${who}님 시리얼을 만들었습니다 (${LAST.type})`); $('#out').scrollIntoView({ behavior: 'smooth', block: 'center' }); };
 const msgOf = x => `[폴더 관리 프로그램 시리얼]\n받는 분: ${x.who}\n종류: ${x.type}\n\n${x.serial}\n\n프로그램을 처음 켜면 나오는 '정품 등록' 화면 ②칸에 위 시리얼을 통째로 붙여 넣고 [등록하고 시작]을 누르세요.\n이 시리얼은 ${x.who}님만 쓰는 것입니다. 남에게 주지 마세요. — 제작자 박효원`;
@@ -187,7 +199,7 @@ const copy = async t => { try { await navigator.clipboard.writeText(t); say('#ma
 $('#share').onclick = async () => { if (!LAST) return; const text = msgOf(LAST); if (navigator.share) { try { await navigator.share({ text }); say('#makemsg', '보냈습니다 (공유 창에서 고른 곳으로)'); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); };
 $('#copymsg').onclick = () => LAST && copy(msgOf(LAST));
 $('#copy').onclick = () => LAST && copy(LAST.serial);
-function paintLog() { const L = log(); $('#log').innerHTML = L.length ? L.map((x, i) => `<div class="it"><div><b>${esc(x.who)}</b> · ${esc(x.type)} · ${esc(x.at)}${x.by && x.by !== '핸드폰' ? ' · ' + esc(x.by === '가져옴' ? '가져옴' : x.by + '에서') : ''}<br><span class="muted">${esc(x.id)} ${x.req ? '· ' + esc(x.req) : ''} ${x.memo ? '· ' + esc(x.memo) : ''}</span></div><button data-cp="${i}">다시 보내기</button></div>`).join('') : '<div class="it"><div class="muted">아직 없습니다</div></div>';
+function paintLog() { const L = log(); $('#log').innerHTML = L.length ? L.map((x, i) => `<div class="it"><div><b>${esc(x.who)}</b> · ${esc(x.type)} · ${esc(x.at)}${x.by && x.by !== '핸드폰' ? ' · ' + esc(x.by === '가져옴' ? '가져옴' : x.by + '에서') : ''}<br><span class="muted">${esc(x.id)} ${x.req ? '· ' + esc(x.req) : ''} ${x.memo ? '· ' + esc(x.memo) : ''}${trDesc(x) ? '<br>' + esc(trDesc(x)) : ''}</span></div><button data-cp="${i}">다시 보내기</button></div>`).join('') : '<div class="it"><div class="muted">아직 없습니다</div></div>';
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => { const x = log()[+b.dataset.cp]; const text = msgOf(x); if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); }); }
 /* 기록 가져오기 (PC·핸드폰 공통) — 내보낸 CSV를 합침: 시리얼 서명이 맞는 줄만, 같은 시리얼은 한 번만 */
 const csvParse = t => { const rows = []; let row = [], f = '', q = false; t = t.replace(/^﻿/, '');
@@ -206,11 +218,11 @@ function logImport(text, pub, cur) {
   for (const r of rows.slice(1)) { const g = n => (ix(n) >= 0 ? (r[ix(n)] || '') : '').trim(); const v = serialOk(g('시리얼'), pub); if (!v) { bad++; continue; }
     if (have.has(v.norm)) { dup++; continue; } have.add(v.norm); add++;
     const at = /^\d{4}-\d{2}-\d{2}/.test(g('발급일')) ? g('발급일').slice(0, 10) : '';
-    out.push({ at, who: g('받는 사람'), memo: g('메모'), type: g('종류') || (v.bound ? '이 PC 전용' : '여러 PC용'), id: v.id, req: g('요청 코드'), serial: v.norm, by: g('발급한 곳') || '가져옴' }); }
+    out.push({ at, who: g('받는 사람'), memo: g('메모'), type: g('종류') || (v.bound ? '이 PC 전용' : '여러 PC용'), id: v.id, req: g('요청 코드'), serial: v.norm, by: g('발급한 곳') || '가져옴', route: TR_ROUTE(g('경로')), ref: g('소개받은 곳'), dist: (g('배포처').toUpperCase().match(/[0-9A-HJKMNP-TV-Z]{5}/) || [''])[0], ts: Date.now() }); }
   out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))); return { list: out, add, dup, bad };
 }
 const csvOut = (L, by) => { const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  return '﻿' + [['발급일', '받는 사람', '종류', '시리얼 번호', '요청 코드', '메모', '시리얼', '발급한 곳'].map(q).join(','), ...L.map(x => [x.at, x.who, x.type, x.id, x.req, x.memo, x.serial, x.by || by].map(q).join(','))].join('\r\n'); };
+  return '﻿' + [['발급일', '받는 사람', '종류', '시리얼 번호', '요청 코드', '메모', '시리얼', '발급한 곳', '경로', '소개받은 곳', '배포처', '배포처 이름'].map(q).join(','), ...L.map(x => [x.at, x.who, x.type, x.id, x.req, x.memo, x.serial, x.by || by, x.route, x.ref, x.dist, typeof trDistName === 'function' ? trDistName(x.dist) : ''].map(q).join(','))].join('\r\n'); };
 $('#csv').onclick = async () => { const csv = csvOut(log(), '핸드폰');
   const name = `시리얼발급기록_핸드폰_${new Date().toISOString().slice(0, 10)}.csv`; const file = typeof File !== 'undefined' ? new File([csv], name, { type: 'text/csv' }) : null;
   if (file && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
@@ -241,10 +253,14 @@ const syNorm = x => String(x.serial || '').replace(/\s+/g, '');
 function syMerge(local, remote, clr) {
   const m = new Map();
   for (const x of [...(remote || []), ...(local || [])]) { if (!x || !x.serial) continue; const e = Object.assign({}, x); if (!e.ts) e.ts = Date.parse(e.at) || 0; if (e.ts < clr) continue;
-    const k = syNorm(e); const o = m.get(k); if (!o) { m.set(k, e); continue; } for (const f of ['at', 'who', 'memo', 'type', 'id', 'req', 'by']) if (!o[f] && e[f]) o[f] = e[f]; o.ts = Math.min(o.ts, e.ts); }
+    const k = syNorm(e); const o = m.get(k); if (!o) { m.set(k, e); continue; } for (const f of ['at', 'who', 'memo', 'type', 'id', 'req', 'by', 'route', 'ref', 'dist']) if (!o[f] && e[f]) o[f] = e[f]; o.ts = Math.min(o.ts, e.ts); }
   return [...m.values()].sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')) || (b.ts - a.ts));
 }
-const syKeyOf = L => L.map(syNorm).sort().join('|');
+const syKeyOf = L => L.map(x => syNorm(x) + '/' + (x.route || '') + (x.ref || '') + (x.dist || '')).sort().join('|');
+/* 배포처 표 합치기: 코드로 한 번만, 나중에 고친 것(ts)이 이김, 지운 것(gone)도 남겨서 다른 기기에서도 지워지게 */
+const syDistMerge = (a, b) => { const m = new Map(); for (const x of [...(a || []), ...(b || [])]) { if (!x || !x.code) continue; const o = m.get(x.code); if (!o || (x.ts || 0) > (o.ts || 0)) m.set(x.code, Object.assign({}, x)); } return [...m.values()].sort((x, y) => String(x.at || '').localeCompare(String(y.at || ''))); };
+const syDistKey = L => L.map(x => x.code + ':' + (x.name || '') + ':' + (x.memo || '') + ':' + (x.gone ? 1 : 0)).join('|');
+const syHasDists = () => typeof trDists === 'function';
 async function syFetch(url, opt, tok) { const r = await fetch(url, Object.assign({ cache: 'no-store' }, opt, { headers: Object.assign({ Authorization: 'Bearer ' + tok, Accept: 'application/vnd.github+json' }, (opt && opt.headers) || {}) })); return r; }
 let SY_BUSY = null, SY_AGAIN = false;
 async function syRun(mode) { /* mode: 'sync' | 'clear' */
@@ -266,9 +282,10 @@ async function syOnce(mode) {
       else throw new Error('기록을 받지 못했습니다 (' + g.status + ')');
       const lclr = +(syLS.get('fm_sync_clr') || 0); let clr = Math.max(rem.clr || 0, lclr); let list;
       if (mode === 'clear') { clr = Date.now(); list = []; } else list = syMerge(syLog(), rem.list, clr);
+      const dists = syHasDists() ? syDistMerge(trDists(), rem.dists) : (rem.dists || []); if (syHasDists()) trSaveDists(dists);
       syLS.set('fm_sync_clr', String(clr)); sySave(list); syPaint();
-      if (sha && mode !== 'clear' && syKeyOf(list) === syKeyOf(rem.list || []) && (rem.clr || 0) === clr) { syDone(list.length); return { list }; }
-      const body = 'FML1.' + await syEnc(K, JSON.stringify({ v: 1, clr, list })) + '\n';
+      if (sha && mode !== 'clear' && syKeyOf(list) === syKeyOf(rem.list || []) && (rem.clr || 0) === clr && syDistKey(dists) === syDistKey(rem.dists || [])) { syDone(list.length); return { list }; }
+      const body = 'FML1.' + await syEnc(K, JSON.stringify({ v: 1, clr, list, dists })) + '\n';
       const p = await syFetch(`${SY_API}/contents/${SY_PATH}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ message: mode === 'clear' ? '기록 모두 지움' : '기록 맞추기', content: toB64(enc.encode(body)), sha }) }, tok);
       if (p.ok) { syDone(list.length); return { list }; }
       if (p.status === 409 || p.status === 422) continue; /* 다른 곳이 먼저 바꿈 → 다시 받아서 합침 */
@@ -280,6 +297,45 @@ async function syOnce(mode) {
   } catch (e) { const off = e instanceof TypeError || e.message === 'Failed to fetch' || /NetworkError|Load failed/.test(e.message); syMsg(off ? '인터넷이 안 돼서 못 맞췄습니다 — 다음에 열거나 발급할 때 맞춥니다' : e.message, !off); return { err: e.message }; }
 }
 const syDone = n => { const d = new Date(); syMsg(`맞췄습니다 — PC·핸드폰 기록 ${n}건 (${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')})`); };
+/* 추적 (PC·핸드폰 공통) — 요청이 온 경로·소개받은 곳·배포처, 배포처 코드, 시리얼 주인 찾기
+   쓰는 쪽에서 준비: log(), PUBK(공개 열쇠 base64), 발급기 공통 도우미(b32clean·b32dec·b32enc·group·hex·sha·fromB64·esc·nacl) */
+const TR_ROUTE = t => { const v = String(t || '').trim(); if (/카톡|카카오|kakao|カカオ/i.test(v)) return '카톡'; if (/메일|mail|メール/i.test(v)) return '메일'; if (/문자|sms|text/i.test(v)) return '문자'; return v ? '직접' : ''; };
+function trParse(t) { const line = re => { const x = String(t || '').match(re); return x ? x[1].trim() : ''; };
+  return { route: TR_ROUTE(line(/(?:^|\n)\s*(?:보낸 곳|Sent via|送信方法)\s*[:：]\s*([^\n]+)/i)), ref: line(/(?:^|\n)\s*(?:소개받은 곳|Referred by|紹介元)\s*[:：]\s*([^\n]+)/i).slice(0, 60),
+    dist: (line(/(?:^|\n)\s*(?:배포처|Distributor|配布元)\s*[:：]\s*([^\n]+)/i).toUpperCase().match(/[0-9A-HJKMNP-TV-Z]{5}/) || [''])[0] }; }
+/* 배포처 표: localStorage fm_dists [{code, name, memo, at, ts}] (자동 맞추기로 PC·핸드폰이 같이 씀) */
+const trDists = () => { try { return JSON.parse(localStorage.getItem('fm_dists') || '[]'); } catch (e) { return []; } };
+const trSaveDists = L => { try { localStorage.setItem('fm_dists', JSON.stringify(L)); } catch (e) {} };
+const trDistName = c => { if (!c) return ''; const d = trDists().find(x => x.code === c && !x.gone); return d ? d.name : ''; };
+const trNewCode = () => { const B = '0123456789ABCDEFGHJKMNPQRSTVWXYZ'; const have = new Set(trDists().map(x => x.code)); for (;;) { const r = crypto.getRandomValues(new Uint8Array(5)); const c = [...r].map(v => B[v & 31]).join(''); if (!have.has(c) && !/^0+$/.test(c)) return c; } };
+const trDesc = x => [x.route && `경로 ${x.route}`, x.ref && `소개 ${x.ref}`, x.dist && `배포처 ${x.dist}${trDistName(x.dist) ? ' (' + trDistName(x.dist) + ')' : ''}`].filter(Boolean).join(' · ');
+/* 시리얼 주인 찾기: 시리얼 전체 · 라이선스 파일 내용 · 시리얼 번호(8글자) · 요청 코드 · 배포처 코드 */
+async function trFind(q, pub) {
+  const t = String(q || '').trim(); if (!t) return { err: '찾을 것을 넣어 주세요' }; const L = log(); const up = t.toUpperCase();
+  const fm = up.match(/FM\d?[-\s]*([0-9A-Z\s-]{120,})/);
+  if (fm) { const b = b32dec(b32clean(fm[1])); if (b.length < 96) return { err: '시리얼 글자가 모자랍니다 — 통째로 붙여 넣어 주세요' }; const d = b.slice(0, 96);
+    let ok = false; try { ok = d[0] === 1 && nacl.sign.detached.verify(d.slice(0, 32), d.slice(32, 96), fromB64(pub)); } catch (e) {}
+    if (!ok) return { kind: 'fake', msg: '이 프로그램의 진짜 시리얼이 아닙니다 (한 글자라도 다르거나 만든 것)' };
+    const id = hex(d.slice(2, 6)).toUpperCase(); const bound = (d[1] & 1) === 1; const days = (d[6] << 8) | d[7]; const issued = new Date(Date.UTC(2026, 0, 1) + days * 864e5).toISOString().slice(0, 10);
+    let req = ''; if (bound) { const mh = d.slice(8, 16); const ck = (await sha('FM-CK', hex(mh))).slice(0, 2); const u = new Uint8Array(10); u.set(mh, 0); u.set(ck, 8); req = group(b32enc(u), 4); }
+    const norm = 'FM1-' + group(b32enc(d), 5); const hits = L.filter(x => String(x.serial || '').replace(/\s+/g, '') === norm || (x.id || '').toUpperCase() === id);
+    return { kind: 'serial', id, bound, issued, req, hits, msg: hits.length ? '' : `진짜 시리얼이지만 기록에는 없습니다 — 시리얼 번호 ${id} · 발급일 ${issued} · ${bound ? '이 PC 전용 (요청 코드 ' + req + ')' : '여러 PC용'}. 기록을 지웠거나, 자동 맞추기 전에 다른 기기에서 만든 것일 수 있습니다.` }; }
+  let m = up.match(/^[0-9A-F]{8}$/); if (m) { const hits = L.filter(x => (x.id || '').toUpperCase() === up); return { kind: 'id', hits, msg: hits.length ? '' : `시리얼 번호 ${up}는 기록에 없습니다` }; }
+  m = up.replace(/O/g, '0').replace(/[IL]/g, '1').match(/[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}-?[0-9A-HJKMNP-TV-Z]{4}/);
+  if (m) { const rc = group(b32clean(m[0]), 4); const hits = L.filter(x => x.req === rc); return { kind: 'req', hits, msg: hits.length ? '' : `요청 코드 ${rc}로 발급한 기록이 없습니다` }; }
+  m = up.match(/^[0-9A-HJKMNP-TV-Z]{5}$/); if (m) { const hits = L.filter(x => x.dist === up); const nm = trDistName(up); return { kind: 'dist', hits, msg: hits.length ? '' : `배포처 ${up}${nm ? ' (' + nm + ')' : ''}로 온 발급 기록이 없습니다` }; }
+  const hits = L.filter(x => [x.who, x.memo, x.ref].some(v => v && String(v).includes(t))); return { kind: 'text', hits, msg: hits.length ? '' : `'${t}'(이)가 들어간 기록이 없습니다 — 시리얼·시리얼 번호(8글자)·요청 코드·배포처 코드·이름으로 찾을 수 있습니다` };
+}
+const trHitHtml = x => `<div class="trh"><b>${esc(x.who || '(이름 없음)')}</b> · ${esc(x.type || '')} · 발급 ${esc(x.at || '')}${x.by ? ' · ' + esc(x.by) + '에서' : ''}<br>시리얼 번호 ${esc(x.id || '')}${x.req ? ' · 요청 코드 ' + esc(x.req) : ''}${x.memo ? ' · 연락처·메모 ' + esc(x.memo) : ''}${trDesc(x) ? '<br>' + esc(trDesc(x)) : ''}</div>`;
+const PUBK = PUB;
+const trDistShow = () => { const c = $('#t_dist').value.trim().toUpperCase(); const n = trDistName(c); $('#t_distnm').textContent = c ? (n ? '배포처: ' + n : (/^[0-9A-HJKMNP-TV-Z]{5}$/.test(c) ? '(배포처 표에 없는 코드 — PC 발급기에서 만든 배포처는 자동 맞추기로 들어옵니다)' : '(코드 모양이 아님)')) : ''; };
+$('#t_dist').addEventListener('input', trDistShow);
+$('#f_go').onclick = async () => { if (!KEY) return paint(); const r = await trFind($('#f_q').value, PUBK); $('#f_out').innerHTML = '';
+  if (r.err) return say('#f_msg', r.err, true); if (r.kind === 'fake') return say('#f_msg', r.msg, true);
+  const head = r.kind === 'serial' ? `진짜 시리얼입니다 — 시리얼 번호 ${r.id} · 발급일 ${r.issued} · ${r.bound ? '이 PC 전용 (요청 코드 ' + r.req + ')' : '여러 PC용'}` : '';
+  if (!r.hits.length) return say('#f_msg', r.msg, r.kind !== 'serial');
+  say('#f_msg', (head ? head + ' — ' : '') + `기록 ${r.hits.length}건`); $('#f_out').innerHTML = r.hits.map(trHitHtml).join(''); };
+$('#f_paste').onclick = async () => { try { const t = await navigator.clipboard.readText(); if (t) $('#f_q').value = t; } catch (e) {} $('#f_go').click(); };
 const syLog = () => log(); const sySave = L => saveLog(L); const syPaint = () => paintLog(); const syMsg = (t, bad) => say('#sy_msg', t, bad);
 $('#sy_now').onclick = () => { if (!KEY) return paint(); syRun('sync'); };
 paint();
