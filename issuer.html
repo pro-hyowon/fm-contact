@@ -44,7 +44,7 @@ label.r input{width:auto}
 [hidden]{display:none!important}
 </style></head>
 <body><div class="wrap">
-<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판</div></div><button id="lockbtn" hidden>잠그기</button></div>
+<div class="top"><div><h1>폴더 관리 프로그램 — 시리얼 발급</h1><div class="muted">제작자 박효원 전용 · 핸드폰판 v1.1</div></div><button id="lockbtn" hidden>잠그기</button></div>
 
 <!-- 1) 열쇠가 아직 없음 -->
 <div class="box" id="nokey" hidden>
@@ -87,8 +87,10 @@ label.r input{width:auto}
   </div>
 
   <h2>이 핸드폰의 발급 기록</h2>
-  <div class="muted">기록은 이 핸드폰에만 남습니다 (PC 발급기 기록과 따로). 가끔 [기록 내보내기]로 보관하세요.</div>
-  <div class="row"><button id="csv">기록 내보내기 (CSV)</button></div>
+  <div class="muted">기록은 이 핸드폰에만 남습니다 (PC 발급기 기록과 따로). 가끔 [기록 내보내기]로 보관하고, 서로 [기록 가져오기]로 합치세요.</div>
+  <div class="row"><button id="csv">기록 내보내기 (CSV)</button><button id="imp">기록 가져오기 (CSV)</button><input type="file" id="impfile" accept=".csv,text/csv,text/plain,text/comma-separated-values" hidden></div>
+  <div class="msg" id="impmsg"></div>
+  <div class="muted">PC 발급기 [기록 내려받기]로 받은 CSV를 [기록 가져오기]로 넣으면 한 목록으로 합쳐집니다 (같은 시리얼은 한 번만, 진짜 시리얼만).</div>
   <div class="lst" id="log"></div>
 
   <h2>이 핸드폰에서 열쇠 지우기</h2>
@@ -182,13 +184,39 @@ const copy = async t => { try { await navigator.clipboard.writeText(t); say('#ma
 $('#share').onclick = async () => { if (!LAST) return; const text = msgOf(LAST); if (navigator.share) { try { await navigator.share({ text }); say('#makemsg', '보냈습니다 (공유 창에서 고른 곳으로)'); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); };
 $('#copymsg').onclick = () => LAST && copy(msgOf(LAST));
 $('#copy').onclick = () => LAST && copy(LAST.serial);
-function paintLog() { const L = log(); $('#log').innerHTML = L.length ? L.map((x, i) => `<div class="it"><div><b>${esc(x.who)}</b> · ${esc(x.type)} · ${esc(x.at)}<br><span class="muted">${esc(x.id)} ${x.req ? '· ' + esc(x.req) : ''} ${x.memo ? '· ' + esc(x.memo) : ''}</span></div><button data-cp="${i}">다시 보내기</button></div>`).join('') : '<div class="it"><div class="muted">아직 없습니다</div></div>';
+function paintLog() { const L = log(); $('#log').innerHTML = L.length ? L.map((x, i) => `<div class="it"><div><b>${esc(x.who)}</b> · ${esc(x.type)} · ${esc(x.at)}${x.by && x.by !== '핸드폰' ? ' · ' + esc(x.by === '가져옴' ? '가져옴' : x.by + '에서') : ''}<br><span class="muted">${esc(x.id)} ${x.req ? '· ' + esc(x.req) : ''} ${x.memo ? '· ' + esc(x.memo) : ''}</span></div><button data-cp="${i}">다시 보내기</button></div>`).join('') : '<div class="it"><div class="muted">아직 없습니다</div></div>';
   document.querySelectorAll('[data-cp]').forEach(b => b.onclick = async () => { const x = log()[+b.dataset.cp]; const text = msgOf(x); if (navigator.share) { try { await navigator.share({ text }); return; } catch (e) { if (e && e.name === 'AbortError') return; } } copy(text); }); }
-$('#csv').onclick = async () => { const L = log(); const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
-  const csv = '﻿' + [['발급일', '받는 사람', '종류', '시리얼 번호', '요청 코드', '메모', '시리얼'].map(q).join(','), ...L.map(x => [x.at, x.who, x.type, x.id, x.req, x.memo, x.serial].map(q).join(','))].join('\r\n');
+/* 기록 가져오기 (PC·핸드폰 공통) — 내보낸 CSV를 합침: 시리얼 서명이 맞는 줄만, 같은 시리얼은 한 번만 */
+const csvParse = t => { const rows = []; let row = [], f = '', q = false; t = t.replace(/^﻿/, '');
+  for (let i = 0; i < t.length; i++) { const c = t[i];
+    if (q) { if (c === '"') { if (t[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true; else if (c === ',' || c === '\t' || c === ';') { row.push(f); f = ''; } else if (c === '\n' || c === '\r') { if (c === '\r' && t[i + 1] === '\n') i++; row.push(f); f = ''; if (row.some(x => x !== '')) rows.push(row); row = []; } else f += c; }
+  row.push(f); if (row.some(x => x !== '')) rows.push(row); return rows; };
+const csvText = buf => { const u = new Uint8Array(buf); const a = new TextDecoder('utf-8').decode(u); if (!a.includes('�')) return a; try { return new TextDecoder('euc-kr').decode(u); } catch (e) { return a; } };
+const serialOk = (s, pub) => { try { const c = b32clean(String(s || '').replace(/^\s*FM\d?[-\s]*/i, '')); const b = b32dec(c); if (b.length < 96) return null; const d = b.slice(0, 96); if (d[0] !== 1) return null;
+  if (!nacl.sign.detached.verify(d.slice(0, 32), d.slice(32, 96), fromB64(pub))) return null; return { id: hex(d.slice(2, 6)).toUpperCase(), bound: (d[1] & 1) === 1, norm: 'FM1-' + group(b32enc(d), 5) }; } catch (e) { return null; } };
+function logImport(text, pub, cur) {
+  const rows = csvParse(text); if (!rows.length) return { err: '빈 파일입니다' };
+  const H = rows[0].map(x => x.trim()); const ix = n => H.indexOf(n); const iSer = ix('시리얼');
+  if (iSer < 0) return { err: '발급 기록 CSV가 아닙니다 — PC 발급기 [기록 내려받기] 또는 핸드폰 [기록 내보내기]로 받은 파일을 골라 주세요' };
+  const have = new Set(cur.map(x => (serialOk(x.serial, pub) || {}).norm || x.serial)); let add = 0, dup = 0, bad = 0; const out = cur.slice();
+  for (const r of rows.slice(1)) { const g = n => (ix(n) >= 0 ? (r[ix(n)] || '') : '').trim(); const v = serialOk(g('시리얼'), pub); if (!v) { bad++; continue; }
+    if (have.has(v.norm)) { dup++; continue; } have.add(v.norm); add++;
+    const at = /^\d{4}-\d{2}-\d{2}/.test(g('발급일')) ? g('발급일').slice(0, 10) : '';
+    out.push({ at, who: g('받는 사람'), memo: g('메모'), type: g('종류') || (v.bound ? '이 PC 전용' : '여러 PC용'), id: v.id, req: g('요청 코드'), serial: v.norm, by: g('발급한 곳') || '가져옴' }); }
+  out.sort((a, b) => String(b.at || '').localeCompare(String(a.at || ''))); return { list: out, add, dup, bad };
+}
+const csvOut = (L, by) => { const q = v => '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  return '﻿' + [['발급일', '받는 사람', '종류', '시리얼 번호', '요청 코드', '메모', '시리얼', '발급한 곳'].map(q).join(','), ...L.map(x => [x.at, x.who, x.type, x.id, x.req, x.memo, x.serial, x.by || by].map(q).join(','))].join('\r\n'); };
+$('#csv').onclick = async () => { const csv = csvOut(log(), '핸드폰');
   const name = `시리얼발급기록_핸드폰_${new Date().toISOString().slice(0, 10)}.csv`; const file = typeof File !== 'undefined' ? new File([csv], name, { type: 'text/csv' }) : null;
   if (file && navigator.canShare && navigator.canShare({ files: [file] })) { try { await navigator.share({ files: [file] }); return; } catch (e) { if (e && e.name === 'AbortError') return; } }
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = name; document.body.appendChild(a); a.click(); setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 3000); };
+$('#imp').onclick = () => $('#impfile').click();
+$('#impfile').onchange = async () => { const f = $('#impfile').files[0]; $('#impfile').value = ''; if (!f) return;
+  const r = logImport(csvText(await f.arrayBuffer()), PUB, log());
+  if (r.err) return say('#impmsg', r.err, true);
+  saveLog(r.list); paintLog(); say('#impmsg', `${r.add}건 가져왔습니다` + (r.dup ? ` · 이미 있던 것 ${r.dup}건` : '') + (r.bad ? ` · 시리얼이 맞지 않는 줄 ${r.bad}건 뺌` : '') + ` — 지금 기록 ${r.list.length}건`); };
 $('#forget').onclick = () => { if (!confirm('이 핸드폰에서 발급 열쇠를 지울까요? (발급 기록은 남습니다)')) return; ls.del('fm_m_vault'); lockNow(); say('#keymsg', '지웠습니다. 다시 쓰려면 PC 발급기의 QR을 찍으세요.'); };
 paint();
 if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('issuer-sw.js').catch(() => {});
