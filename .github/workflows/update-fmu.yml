@@ -1,0 +1,34 @@
+# 새 버전 알리기를 쉽게: 릴리스에 FolderManager_v○.zip과 update.fmu를 같이 올리면
+# 이 작업이 update.fmu(제작자 서명 확인)를 저장소 맨 위로 옮겨서, 설치된 프로그램들이 알림을 받음
+name: 업데이트 알림 옮기기
+on:
+  release:
+    types: [published, edited, released]
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+permissions:
+  contents: write
+concurrency: update-fmu
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 릴리스의 update.fmu → update.fmu
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -e
+          if [ -z "$TAG" ]; then TAG=$(gh release view --json tagName -q .tagName 2>/dev/null || true); fi
+          [ -n "$TAG" ] || { echo "릴리스 없음"; exit 0; }
+          gh release download "$TAG" -p update.fmu -O /tmp/update.fmu --clobber 2>/dev/null || { echo "$TAG 릴리스에 update.fmu 없음 — 할 일 없음"; exit 0; }
+          node .github/check-fmu.js /tmp/update.fmu "$TAG"
+          if cmp -s /tmp/update.fmu update.fmu; then echo "이미 같은 알림"; exit 0; fi
+          cp /tmp/update.fmu update.fmu
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add update.fmu
+          git commit -m "업데이트 알림 $TAG (릴리스에서 옮김)"
+          git push
